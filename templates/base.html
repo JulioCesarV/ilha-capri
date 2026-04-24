@@ -6,22 +6,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <title>Residencial Ilha de Capri</title>
     <style>
-        /* Faz o campo inteiro ser clicável sem quebrar o layout */
-        input[type="date"],
-        input[type="time"] {
-            position: relative;
+        input[type="date"], input[type="time"] {
             appearance: none;
-            }
-
-        input[type="date"]::-webkit-calendar-picker-indicator,
-        input[type="time"]::-webkit-calendar-picker-indicator {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            cursor: pointer;
-            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">

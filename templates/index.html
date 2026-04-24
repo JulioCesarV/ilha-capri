@@ -36,7 +36,8 @@
         <div>
             <p class="text-xl font-black text-blue-900 tracking-tight">{{ r.display_date }}</p>
             <p class="font-bold text-slate-700 text-base">{{ r.display_start }} às {{ r.display_end }}</p>
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Unidade {{ r.unit_number }}</p>
+            <!-- UNIDADE COM FONTE LEVEMENTE MAIS ESCURA (text-slate-500) -->
+            <p class="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">Unidade {{ r.unit_number }}</p>
         </div>
         
         {% if user and (user.is_admin or user.unit_number|string == r.unit_number|string) %}
