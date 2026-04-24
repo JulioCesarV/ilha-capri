@@ -189,21 +189,27 @@ def admin_usuarios():
 @app.route('/admin/usuario/editar/<id>', methods=['GET', 'POST'])
 def admin_editar_usuario(id):
     user = get_logged_user()
-    if not user or not user['is_admin']: return redirect(url_for('index'))
+    if not user or not user['is_admin']: 
+        return redirect(url_for('index'))
     
     if request.method == 'POST':
-        supabase.table('profiles').update({
+        # Dados para atualizar
+        update_data = {
             "full_name": request.form.get('nome'),
             "email": request.form.get('email'),
             "whatsapp": request.form.get('whatsapp'),
             "unit_number": request.form.get('unidade'),
             "is_admin": request.form.get('is_admin') == '1'
-        }).eq('id', id).execute()
-        flash("✅ Morador atualizado!")
+        }
+        
+        # Executa o update
+        supabase.table('profiles').update(update_data).eq('id', id).execute()
+        flash("✅ Cadastro atualizado com sucesso!")
         return redirect(url_for('admin_usuarios'))
     
-    target = supabase.table('profiles').select('*').eq('id', id).maybe_single().execute()
-    return render_template('admin_edit_user.html', u=target.data)
+    # Busca o usuário para preencher o formulário
+    res = supabase.table('profiles').select('*').eq('id', id).maybe_single().execute()
+    return render_template('admin_edit_user.html', u=res.data)
 
 # --- ADMIN: EXCLUIR USUÁRIO ---
 @app.route('/admin/usuario/delete/<id>')
