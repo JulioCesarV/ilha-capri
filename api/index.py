@@ -21,9 +21,16 @@ def get_logged_user():
     try:
         user_res = supabase.auth.get_user(token)
         if not user_res.user: return None
+        
+        # O segredo: se não achar o perfil, limpa a sessão para forçar novo login/cadastro
         profile = supabase.table('profiles').select('*').eq('id', user_res.user.id).maybe_single().execute()
+        if not profile.data:
+            session.clear()
+            return None
+            
         return profile.data
-    except: return None
+    except:
+        return None
 
 def verificar_conflito(data, inicio, fim, reserva_id=None):
     # Lógica de conflito compatível com Postgres/Supabase
@@ -169,7 +176,8 @@ def admin_delete_usuario(id):
 
 @app.route('/logout')
 def logout():
-    session.clear()
+    session.clear() # Limpa todas as variáveis de login
+    flash("Você saiu da conta.")
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
