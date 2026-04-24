@@ -4,76 +4,69 @@ from supabase import create_client, Client
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Carrega variáveis de ambiente (Local: do arquivo .env / Vercel: das Settings do projeto)
+# Carrega variáveis de ambiente
 load_dotenv()
 
 app = Flask(__name__, template_folder='../templates')
 
-# Segurança: Chaves do Supabase e Secret Key do Flask
+# Configurações de Segurança
 app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 
-# Inicializa o cliente do Supabase
+# Inicializa Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- FUNÇÃO AUXILIAR: PEGAR DADOS DO USUÁRIO LOGADO ---
+# --- FUNÇÃO AUXILIAR: USUÁRIO LOGADO ---
 def get_logged_user():
     token = session.get('supabase_token')
     if not token:
         return None
     try:
-        # Verifica o usuário através do token de acesso
         user_response = supabase.auth.get_user(token)
-        # Busca os dados extras (nome, unidade, is_admin) na tabela profiles
-        profile = supabase.table('profiles').select('*').eq('id', user_response.user.id).single().execute()
+        if not user_response.user:
+            return None
+        # Busca perfil na tabela profiles
+        profile = supabase.table('profiles').select('*').eq('id', user_response.user.id).maybe_single().execute()
         return profile.data
     except Exception:
         return None
 
-# --- FUNÇÃO AUXILIAR: VERIFICAR CONFLITO DE HORÁRIO ---
+# --- FUNÇÃO AUXILIAR: CONFLITO DE HORÁRIO ---
 def verificar_conflito(data, inicio, fim, reserva_id=None):
-    # Lógica de sobreposição: (InicioExistente < FimNovo) E (FimExistente > InicioNovo)
     query = supabase.table('reservations').select('*')\
         .eq('reservation_date', data)\
         .lt('start_time', fim)\
         .gt('end_time', inicio)
     
     result = query.execute()
-    
     if reserva_id:
-        # Se for edição, ignora a própria reserva na verificação
-        conflitos = [r for r in result.data if r['id'] != reserva_id]
+        conflitos = [r for r in result.data if str(r['id']) != str(reserva_id)]
         return len(conflitos) > 0
-    
     return len(result.data) > 0
 
-# --- ROTA: DASHBOARD INICIAL ---
+# --- ROTA: DASHBOARD ---
 @app.route('/')
 def index():
     user = get_logged_user()
-    # Lista todas as reservas ordenadas por data e hora
     res = supabase.table('reservations').select('*').order('reservation_date').order('start_time').execute()
     return render_template('index.html', reservations=res.data, user=user)
 
-# --- ROTA: CADASTRO DE MORADOR ---
+# --- ROTA: CADASTRO ---
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
+        confirm = request.form.get('confirm_password')
         
-        if password != confirm_password:
+        if password != confirm:
             flash("⚠️ As senhas não coincidem!")
             return redirect(url_for('signup'))
 
         try:
-            # 1. Cria o usuário no sistema de autenticação do Supabase
             auth_res = supabase.auth.sign_up({"email": email, "password": password})
-            
             if auth_res.user:
-                # 2. Cria o perfil do morador com os dados adicionais
                 supabase.table('profiles').insert({
                     "id": auth_res.user.id,
                     "email": email,
@@ -82,11 +75,10 @@ def signup():
                     "unit_number": request.form.get('unidade'),
                     "is_admin": False
                 }).execute()
-                flash("✅ Conta criada! Verifique seu e-mail para confirmar o acesso.")
+                flash("✅ Conta criada! Verifique seu e-mail para confirmar.")
                 return redirect(url_for('login'))
         except Exception:
-            flash("❌ Erro ao cadastrar. Verifique se o e-mail já está em uso.")
-            
+            flash("❌ Erro ao cadastrar. Verifique os dados.")
     return render_template('signup.html')
 
 # --- ROTA: LOGIN ---
@@ -100,10 +92,10 @@ def login():
             session['supabase_token'] = res.session.access_token
             return redirect(url_for('index'))
         except Exception:
-            flash("❌ E-mail ou senha incorretos ou e-mail não confirmado.")
+            flash("❌ Login falhou. Verifique e-mail e senha.")
     return render_template('login.html')
 
-# --- ROTA: NOVA RESERVA ---
+# --- ROTA: RESERVAR ---
 @app.route('/reservar', methods=['GET', 'POST'])
 def reservar():
     user = get_logged_user()
@@ -114,96 +106,67 @@ def reservar():
         inicio = request.form.get('inicio')
         fim = request.form.get('fim')
 
-        # Validação de Domingo
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
-            flash("⚠️ Não permitimos reservas aos Domingos.")
+            flash("⚠️ Domingos não permitidos.")
             return redirect(url_for('reservar'))
 
-        # Validação Lei do Silêncio (08:00 às 22:00)
         h_in = int(inicio.split(':')[0])
         h_out = int(fim.split(':')[0])
-        m_out = int(fim.split(':')[1])
-        if h_in < 8 or h_out > 22 or (h_out == 22 and m_out > 0):
-            flash("⚠️ Horário permitido apenas entre 08:00 e 22:00.")
+        if h_in < 8 or h_out > 22 or (h_out == 22 and int(fim.split(':')[1]) > 0):
+            flash("⚠️ Permitido apenas entre 08:00 e 22:00.")
             return redirect(url_for('reservar'))
 
-        # Validação de Conflito de Horário
         if verificar_conflito(data, inicio, fim):
-            flash("⚠️ Este horário já está reservado por outra unidade.")
+            flash("⚠️ Horário já ocupado.")
             return redirect(url_for('reservar'))
 
         supabase.table('reservations').insert({
-            "user_id": user['id'],
-            "unit_number": user['unit_number'],
-            "reservation_date": data,
-            "start_time": inicio,
-            "end_time": fim
+            "user_id": user['id'], "unit_number": user['unit_number'],
+            "reservation_date": data, "start_time": inicio, "end_time": fim
         }).execute()
-        
         flash("✅ Reserva confirmada!")
         return redirect(url_for('index'))
-
     return render_template('reservar.html')
 
 # --- ROTA: EDITAR RESERVA ---
 @app.route('/editar/<id>', methods=['GET', 'POST'])
 def editar(id):
     user = get_logged_user()
-    res_data = supabase.table('reservations').select('*').eq('id', id).single().execute().data
-    
+    res_data = supabase.table('reservations').select('*').eq('id', id).maybe_single().execute().data
     if not user or not res_data: return redirect(url_for('index'))
-    
-    # Segurança: Apenas o dono da unidade ou o Admin edita
-    if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
-        flash("⚠️ Você não tem permissão para editar esta reserva.")
-        return redirect(url_for('index'))
 
     if request.method == 'POST':
         data, inicio, fim = request.form.get('data'), request.form.get('inicio'), request.form.get('fim')
-        
-        # Reaplica as travas de segurança
-        dt = datetime.strptime(data, '%Y-%m-%d')
-        h_in, h_out, m_out = int(inicio.split(':')[0]), int(fim.split(':')[0]), int(fim.split(':')[1])
-        
-        if dt.weekday() == 6 or h_in < 8 or h_out > 22 or (h_out == 22 and m_out > 0):
-            flash("⚠️ Dados inválidos (Domingo ou Lei do Silêncio).")
-            return redirect(url_for('editar', id=id))
-
         if verificar_conflito(data, inicio, fim, id):
-            flash("⚠️ Conflito de horário com outra reserva.")
+            flash("⚠️ Conflito de horário.")
             return redirect(url_for('editar', id=id))
 
         supabase.table('reservations').update({
             "reservation_date": data, "start_time": inicio, "end_time": fim
         }).eq('id', id).execute()
-        
-        flash("✅ Reserva atualizada!")
+        flash("✅ Atualizado!")
         return redirect(url_for('index'))
-        
     return render_template('editar.html', r=res_data)
 
 # --- ROTA: EXCLUIR RESERVA ---
 @app.route('/delete/<id>')
 def delete(id):
     user = get_logged_user()
-    if not user: return redirect(url_for('login'))
-    
-    # A RLS no Supabase garante que só o dono apague, mas o código reforça
-    supabase.table('reservations').delete().eq('id', id).execute()
-    flash("✅ Reserva removida.")
+    if user:
+        supabase.table('reservations').delete().eq('id', id).execute()
+        flash("✅ Removida.")
     return redirect(url_for('index'))
 
-# --- ÁREA ADMIN: LISTAR USUÁRIOS ---
+# --- ADMIN: LISTAR USUÁRIOS ---
 @app.route('/admin/usuarios')
 def admin_usuarios():
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
-    
     profiles = supabase.table('profiles').select('*').order('unit_number').execute()
     return render_template('usuarios.html', profiles=profiles.data, user=user)
 
-# --- ÁREA ADMIN: EDITAR USUÁRIO ---
+# --- ADMIN: EDITAR USUÁRIO ---
 @app.route('/admin/usuario/editar/<id>', methods=['GET', 'POST'])
 def admin_editar_usuario(id):
     user = get_logged_user()
@@ -217,52 +180,20 @@ def admin_editar_usuario(id):
             "unit_number": request.form.get('unidade'),
             "is_admin": request.form.get('is_admin') == '1'
         }).eq('id', id).execute()
-        flash("✅ Cadastro do morador atualizado!")
+        flash("✅ Morador atualizado!")
         return redirect(url_for('admin_usuarios'))
     
-    target = supabase.table('profiles').select('*').eq('id', id).single().execute()
+    target = supabase.table('profiles').select('*').eq('id', id).maybe_single().execute()
     return render_template('admin_edit_user.html', u=target.data)
 
-# --- ÁREA ADMIN: EXCLUIR USUÁRIO ---
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-        
-        if password != confirm_password:
-            flash("⚠️ As senhas não coincidem!")
-            return redirect(url_for('signup'))
-
-        try:
-            # 1. Cria o usuário no Auth
-            auth_res = supabase.auth.sign_up({"email": email, "password": password})
-            
-            # Nota: No plano grátis, se o e-mail não for confirmado, 
-            # o usuário é criado no Auth mas a sessão não é iniciada.
-            if auth_res.user:
-                # 2. Insere na tabela profiles usando o ID gerado
-                # Usamos um try/except específico aqui para capturar erros de permissão
-                try:
-                    supabase.table('profiles').insert({
-                        "id": auth_res.user.id,
-                        "email": email,
-                        "full_name": f"{request.form.get('nome')} {request.form.get('sobrenome')}",
-                        "whatsapp": request.form.get('whatsapp'),
-                        "unit_number": request.form.get('unidade'),
-                        "is_admin": False
-                    }).execute()
-                    flash("✅ Cadastro realizado! POR FAVOR, CONFIRME SEU E-MAIL para conseguir logar.")
-                    return redirect(url_for('login'))
-                except Exception as e:
-                    print(f"Erro ao inserir perfil: {e}")
-                    flash("Erro ao criar perfil. Contate o administrador.")
-        except Exception as e:
-            print(f"Erro no signup: {e}")
-            flash("❌ Erro ao cadastrar. Verifique os dados ou se o e-mail já existe.")
-            
-    return render_template('signup.html')
+# --- ADMIN: EXCLUIR USUÁRIO ---
+@app.route('/admin/usuario/delete/<id>')
+def admin_delete_usuario(id):
+    user = get_logged_user()
+    if user and user['is_admin']:
+        supabase.table('profiles').delete().eq('id', id).execute()
+        flash("✅ Morador removido.")
+    return redirect(url_for('admin_usuarios'))
 
 # --- LOGOUT ---
 @app.route('/logout')
