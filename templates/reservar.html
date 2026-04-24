@@ -1,24 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-    <h2 class="text-2xl font-bold mb-6 text-blue-900">Agendar Dia</h2>
+<div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+    <div class="flex items-center gap-2 mb-6">
+        <a href="/" class="p-2 bg-slate-50 rounded-xl text-slate-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </a>
+        <h2 class="text-2xl font-black text-blue-900 tracking-tight">Nova Reserva</h2>
+    </div>
+
     <form method="POST" class="space-y-6">
         <div>
-            <label class="text-xs font-bold text-slate-400 uppercase ml-1">Data selecionada</label>
-            <input type="date" name="data" class="w-full p-4 bg-slate-50 rounded-xl border-none text-lg font-semibold" required>
+            <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Data da Reserva</label>
+            <input type="date" name="data" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none text-lg font-bold block" required>
         </div>
-        <div class="flex gap-4">
-            <div class="w-1/2">
-                <label class="text-xs font-bold text-slate-400 uppercase ml-1">Início</label>
-                <input type="time" name="inicio" value="09:00" class="w-full p-4 bg-slate-50 rounded-xl border-none font-bold" required>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Início</label>
+                <input type="time" name="inicio" value="09:00" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none font-bold text-lg block" required>
             </div>
-            <div class="w-1/2">
-                <label class="text-xs font-bold text-slate-400 uppercase ml-1">Fim</label>
-                <input type="time" name="fim" value="15:30" class="w-full p-4 bg-slate-50 rounded-xl border-none font-bold" required>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Fim</label>
+                <input type="time" name="fim" value="15:30" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none font-bold text-lg block" required>
             </div>
         </div>
-        <button class="w-full bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg">Confirmar Reserva</button>
-        <a href="/" class="block text-center text-slate-400 text-sm font-bold">Voltar</a>
+
+        <div class="pt-4">
+            <button class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-xl shadow-blue-100 text-lg active:scale-95 transition-transform">
+                Confirmar Reserva
+            </button>
+        </div>
     </form>
 </div>
 {% endblock %}
