@@ -56,7 +56,11 @@ def index():
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
+        nome = request.form.get('nome')
+        sobrenome = request.form.get('sobrenome')
         email = request.form.get('email')
+        unidade = request.form.get('unidade')
+        whatsapp = request.form.get('whatsapp')
         password = request.form.get('password')
         confirm = request.form.get('confirm_password')
         
@@ -65,20 +69,35 @@ def signup():
             return redirect(url_for('signup'))
 
         try:
+            # 1. Cria o usuário no Auth do Supabase
             auth_res = supabase.auth.sign_up({"email": email, "password": password})
+            
             if auth_res.user:
-                supabase.table('profiles').insert({
-                    "id": auth_res.user.id,
+                # 2. Tenta inserir na tabela profiles
+                user_id = auth_res.user.id
+                dados_perfil = {
+                    "id": user_id,
                     "email": email,
-                    "full_name": f"{request.form.get('nome')} {request.form.get('sobrenome')}",
-                    "whatsapp": request.form.get('whatsapp'),
-                    "unit_number": request.form.get('unidade'),
+                    "full_name": f"{nome} {sobrenome}",
+                    "whatsapp": whatsapp,
+                    "unit_number": unidade,
                     "is_admin": False
-                }).execute()
-                flash("✅ Conta criada! Verifique seu e-mail para confirmar.")
+                }
+                
+                # O .execute() vai disparar um erro claro se falhar
+                supabase.table('profiles').insert(dados_perfil).execute()
+                
+                flash("✅ Cadastro realizado! Tente fazer o login agora.")
                 return redirect(url_for('login'))
-        except Exception:
-            flash("❌ Erro ao cadastrar. Verifique os dados.")
+            else:
+                flash("❌ Erro ao criar autenticação. Tente outro e-mail.")
+                
+        except Exception as e:
+            # Esse erro vai aparecer na sua tela agora para sabermos o que é
+            erro_msg = str(e)
+            print(f"ERRO CRÍTICO NO SIGNUP: {erro_msg}")
+            flash(f"Erro nos dados: {erro_msg}")
+            
     return render_template('signup.html')
 
 # --- ROTA: LOGIN ---
