@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
     <title>Residencial Ilha de Capri</title>
+
     <style>
-        input[type="date"], input[type="time"] {
+        input[type="date"] {
             appearance: none;
         }
     </style>
 </head>
+
 <body class="bg-slate-50 text-slate-900 font-sans">
     <nav class="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-50">
         <div class="max-w-md mx-auto flex justify-between items-center text-sm">
@@ -20,13 +22,43 @@
             {% endif %}
         </div>
     </nav>
+
     <main class="max-w-md mx-auto p-4">
         {% with messages = get_flashed_messages() %}
           {% if messages %}
-            {% for m in messages %}<div class="bg-amber-100 border-l-4 border-amber-500 p-3 text-sm mb-4 rounded-r-lg font-bold">{{m}}</div>{% endfor %}
+            {% for m in messages %}
+              <div class="bg-amber-100 border-l-4 border-amber-500 p-3 text-sm mb-4 rounded-r-lg font-bold">
+                {{m}}
+              </div>
+            {% endfor %}
           {% endif %}
         {% endwith %}
+
         {% block content %}{% endblock %}
     </main>
+
+    <!-- SCRIPT DE HORA -->
+    <script>
+        function formatTime(input) {
+            let value = input.value.replace(/\D/g, '');
+
+            if (value.length >= 3) {
+                value = value.slice(0,2) + ':' + value.slice(2,4);
+            }
+
+            input.value = value.slice(0,5);
+        }
+
+        function validateTime(input) {
+            if (!input.value.includes(':')) return;
+
+            const [h, m] = input.value.split(':').map(Number);
+
+            if (h > 23 || m > 59) {
+                input.value = '';
+                alert('Horário inválido');
+            }
+        }
+    </script>
 </body>
 </html>

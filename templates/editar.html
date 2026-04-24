@@ -1,36 +1,68 @@
 {% extends "base.html" %}
 {% block content %}
+
 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+
     <div class="flex items-center gap-2 mb-6">
         <a href="/" class="p-2 bg-slate-50 rounded-xl text-slate-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            ←
         </a>
-        <h2 class="text-2xl font-black text-blue-900 tracking-tight">Editar Reserva</h2>
+        <h2 class="text-2xl font-black text-blue-900">Editar Reserva</h2>
     </div>
 
     <form method="POST" class="space-y-6">
+
         <div>
-            <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Alterar Data</label>
-            <input type="date" name="data" value="{{ r.reservation_date }}" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none text-lg font-bold block" required>
+            <label class="text-xs font-bold text-slate-400 uppercase">Data</label>
+            <input type="date" name="data"
+                value="{{ r.reservation_date }}"
+                class="w-full h-16 p-4 bg-slate-50 rounded-2xl font-bold text-lg"
+                required>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
+
             <div>
-                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Novo Início</label>
-                <input type="time" name="inicio" value="{{ r.start_time[:5] }}" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none font-bold text-lg block" required>
+                <label class="text-xs font-bold text-slate-400 uppercase">Início</label>
+                <input 
+                    type="text"
+                    name="inicio"
+                    value="{{ r.start_time[:5] }}"
+                    maxlength="5"
+                    inputmode="numeric"
+                    oninput="formatTime(this)"
+                    onblur="validateTime(this)"
+                    class="w-full h-16 p-4 bg-slate-50 rounded-2xl font-bold text-lg text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                >
             </div>
+
             <div>
-                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Novo Fim</label>
-                <input type="time" name="fim" value="{{ r.end_time[:5] }}" class="w-full h-16 p-4 bg-slate-50 rounded-2xl border-none font-bold text-lg block" required>
+                <label class="text-xs font-bold text-slate-400 uppercase">Fim</label>
+                <input 
+                    type="text"
+                    name="fim"
+                    value="{{ r.end_time[:5] }}"
+                    maxlength="5"
+                    inputmode="numeric"
+                    oninput="formatTime(this)"
+                    onblur="validateTime(this)"
+                    class="w-full h-16 p-4 bg-slate-50 rounded-2xl font-bold text-lg text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                >
             </div>
+
         </div>
 
-        <div class="pt-4">
-            <button class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-xl shadow-blue-100 text-lg active:scale-95 transition-transform relative z-10">
-                Salvar Alterações
-            </button>
-            <a href="/" class="block text-center text-slate-400 text-xs font-black uppercase mt-6 tracking-widest">Cancelar</a>
-        </div>
+        <button class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-xl text-lg">
+            Salvar Alterações
+        </button>
+
+        <a href="/" class="block text-center text-slate-400 text-xs mt-4">
+            Cancelar
+        </a>
+
     </form>
 </div>
+
 {% endblock %}
