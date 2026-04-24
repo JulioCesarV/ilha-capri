@@ -224,14 +224,45 @@ def admin_editar_usuario(id):
     return render_template('admin_edit_user.html', u=target.data)
 
 # --- ÁREA ADMIN: EXCLUIR USUÁRIO ---
-@app.route('/admin/usuario/delete/<id>')
-def admin_delete_usuario(id):
-    user = get_logged_user()
-    if user and user['is_admin']:
-        # O perfil é deletado (as reservas caem em cascata se configurado no SQL)
-        supabase.table('profiles').delete().eq('id', id).execute()
-        flash("✅ Morador removido com sucesso.")
-    return redirect(url_for('admin_usuarios'))
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if password != confirm_password:
+            flash("⚠️ As senhas não coincidem!")
+            return redirect(url_for('signup'))
+
+        try:
+            # 1. Cria o usuário no Auth
+            auth_res = supabase.auth.sign_up({"email": email, "password": password})
+            
+            # Nota: No plano grátis, se o e-mail não for confirmado, 
+            # o usuário é criado no Auth mas a sessão não é iniciada.
+            if auth_res.user:
+                # 2. Insere na tabela profiles usando o ID gerado
+                # Usamos um try/except específico aqui para capturar erros de permissão
+                try:
+                    supabase.table('profiles').insert({
+                        "id": auth_res.user.id,
+                        "email": email,
+                        "full_name": f"{request.form.get('nome')} {request.form.get('sobrenome')}",
+                        "whatsapp": request.form.get('whatsapp'),
+                        "unit_number": request.form.get('unidade'),
+                        "is_admin": False
+                    }).execute()
+                    flash("✅ Cadastro realizado! POR FAVOR, CONFIRME SEU E-MAIL para conseguir logar.")
+                    return redirect(url_for('login'))
+                except Exception as e:
+                    print(f"Erro ao inserir perfil: {e}")
+                    flash("Erro ao criar perfil. Contate o administrador.")
+        except Exception as e:
+            print(f"Erro no signup: {e}")
+            flash("❌ Erro ao cadastrar. Verifique os dados ou se o e-mail já existe.")
+            
+    return render_template('signup.html')
 
 # --- LOGOUT ---
 @app.route('/logout')
