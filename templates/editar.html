@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+    <h2 class="text-2xl font-bold mb-6 text-blue-900">Editar Reserva</h2>
+    <form method="POST" class="space-y-6">
+        <div>
+            <label class="text-xs font-bold text-slate-400 uppercase">Data</label>
+            <input type="date" name="data" value="{{ r.reservation_date }}" class="w-full p-4 bg-slate-50 rounded-xl border-none text-lg" required>
+        </div>
+        <div class="flex gap-4">
+            <div class="w-1/2">
+                <label class="text-xs font-bold text-slate-400 uppercase">Início</label>
+                <input type="time" name="inicio" value="{{ r.start_time }}" class="w-full p-4 bg-slate-50 rounded-xl border-none" required>
+            </div>
+            <div class="w-1/2">
+                <label class="text-xs font-bold text-slate-400 uppercase">Fim</label>
+                <input type="time" name="fim" value="{{ r.end_time }}" class="w-full p-4 bg-slate-50 rounded-xl border-none" required>
+            </div>
+        </div>
+        <button class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">Salvar Alterações</button>
+        <a href="/" class="block text-center text-slate-400 text-sm font-bold">Cancelar</a>
+    </form>
+</div>
+{% endblock %}
