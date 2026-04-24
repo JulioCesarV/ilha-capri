@@ -12,8 +12,8 @@
             <!-- BOTÃO INÍCIO (Logo) -->
             <a href="/" class="font-bold tracking-tight uppercase">Ilha de Capri</a>
             
-            {% if session.get('user_id') %}
-            <!-- BOTÃO SAIR -->
+            <!-- Verifica se existe um token de login no navegador -->
+            {% if session.get('supabase_token') %}
             <a href="/logout" class="text-xs bg-blue-800 px-3 py-1 rounded-full border border-blue-700">Sair</a>
             {% endif %}
         </div>
