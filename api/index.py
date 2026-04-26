@@ -133,15 +133,51 @@ def toggle_block(id):
 @app.route('/editar/<id>', methods=['GET', 'POST'])
 def editar(id):
     user = get_logged_user()
+    # Busca os dados atuais da reserva
     res_data = supabase.table('reservations').select('*').eq('id', id).maybe_single().execute().data
-    if not user or not res_data: return redirect(url_for('index'))
-    if request.method == 'POST':
-        data, inicio, fim = request.form.get('data'), request.form.get('inicio'), request.form.get('fim')
-        if verificar_conflito(data, inicio, fim, id):
-            flash("⚠️ Conflito de horário.")
-            return redirect(url_for('editar', id=id))
-        supabase.table('reservations').update({"reservation_date": data, "start_time": inicio, "end_time": fim}).eq('id', id).execute()
+    
+    if not user or not res_data: 
         return redirect(url_for('index'))
+    
+    # Segurança: Só o dono da unidade ou Admin pode editar
+    if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
+        flash("⚠️ Você não tem permissão para editar esta reserva.")
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        data = request.form.get('data')
+        inicio = request.form.get('inicio')
+        fim = request.form.get('fim')
+
+        # --- NOVA TRAVA: Não permite editar para Domingo ---
+        dt = datetime.strptime(data, '%Y-%m-%d')
+        if dt.weekday() == 6:
+            flash("⚠️ Erro: Não é permitido alterar reservas para domingos.")
+            return redirect(url_for('editar', id=id))
+
+        # --- NOVA TRAVA: Lei do silêncio na edição (08h às 22h) ---
+        h_in = int(inicio.split(':')[0])
+        h_out = int(fim.split(':')[0])
+        m_out = int(fim.split(':')[1])
+        if h_in < 8 or h_out > 22 or (h_out == 22 and m_out > 0):
+            flash("⚠️ Erro: O novo horário fere a lei do silêncio (08:00 às 22:00).")
+            return redirect(url_for('editar', id=id))
+
+        # --- TRAVA: Conflito de horário ---
+        if verificar_conflito(data, inicio, fim, id):
+            flash("⚠️ Erro: Esse novo horário já está ocupado por outra unidade.")
+            return redirect(url_for('editar', id=id))
+
+        # Se passou por tudo, atualiza
+        supabase.table('reservations').update({
+            "reservation_date": data, 
+            "start_time": inicio, 
+            "end_time": fim
+        }).eq('id', id).execute()
+        
+        flash("✅ Reserva atualizada com sucesso!")
+        return redirect(url_for('index'))
+        
     return render_template('editar.html', r=res_data)
 
 @app.route('/delete/<id>')
