@@ -191,7 +191,19 @@ def delete(id):
 def admin_usuarios():
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
+    
     profiles = supabase.table('profiles').select('*').order('unit_number').execute()
+    
+    # Prepara os dados para o link de WhatsApp
+    for p in profiles.data:
+        # Remove tudo que não é número (parênteses, espaços, traços)
+        raw_phone = ''.join(filter(str.isdigit, p['whatsapp']))
+        # Se o usuário não digitou 55 no início, nós adicionamos
+        if not raw_phone.startswith('55'):
+            raw_phone = '55' + raw_phone
+        # Cria o link final
+        p['wa_link'] = f"https://wa.me/{raw_phone}"
+        
     return render_template('usuarios.html', profiles=profiles.data, user=user)
 
 @app.route('/admin/usuario/editar/<id>', methods=['GET', 'POST'])
