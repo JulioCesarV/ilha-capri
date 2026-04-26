@@ -83,12 +83,21 @@ def login():
             flash("❌ E-mail ou senha incorretos.")
     return render_template('login.html')
 
+# --- ROTA: RESERVAR (Com a trava de inadimplência) ---
 @app.route('/reservar', methods=['GET', 'POST'])
 def reservar():
     user = get_logged_user()
     if not user: return redirect(url_for('login'))
+
+    # VERIFICAÇÃO DE INADIMPLÊNCIA
+    if user.get('is_blocked'):
+        flash("⚠️ Atenção: Sua unidade possui pendências financeiras. A reserva não poderá ser efetuada por motivos de inadimplência. Entre em contato com o síndico para regularizar.")
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         data, inicio, fim = request.form.get('data'), request.form.get('inicio'), request.form.get('fim')
+        
+        # (Mantenha as validações de domingo, horário e conflito que já funcionam...)
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
             flash("⚠️ Domingos não são permitidos.")
@@ -96,13 +105,30 @@ def reservar():
         if verificar_conflito(data, inicio, fim):
             flash("⚠️ Horário já ocupado.")
             return redirect(url_for('reservar'))
-        
+
         supabase.table('reservations').insert({
             "user_id": user['id'], "unit_number": user['unit_number'],
             "reservation_date": data, "start_time": inicio, "end_time": fim
         }).execute()
         return redirect(url_for('index'))
     return render_template('reservar.html')
+
+# --- ROTA ADMIN: BLOQUEAR/DESBLOQUEAR USUÁRIO ---
+@app.route('/admin/usuario/toggle_block/<id>')
+def toggle_block(id):
+    user = get_logged_user()
+    if not user or not user['is_admin']: return redirect(url_for('index'))
+    
+    # Busca o status atual
+    target = supabase.table('profiles').select('is_blocked').eq('id', id).single().execute()
+    novo_status = not target.data['is_blocked']
+    
+    # Atualiza
+    supabase.table('profiles').update({"is_blocked": novo_status}).eq('id', id).execute()
+    
+    status_txt = "Bloqueado (Inadimplente)" if novo_status else "Liberado"
+    flash(f"Status da unidade atualizado para: {status_txt}")
+    return redirect(url_for('admin_usuarios'))
 
 @app.route('/editar/<id>', methods=['GET', 'POST'])
 def editar(id):
