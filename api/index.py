@@ -38,13 +38,24 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
 @app.route('/')
 def index():
     user = get_logged_user()
-    res = supabase.table('reservations').select('*').order('reservation_date').order('start_time').execute()
+    
+    # 1. Pegamos a data de hoje no formato do banco (AAAA-MM-DD)
+    hoje = datetime.now().strftime('%Y-%m-%d')
+    
+    # 2. Buscamos apenas reservas onde a data é MAIOR ou IGUAL a hoje (.gte)
+    # 3. Ordenamos de forma CRESCENTE (a mais próxima primeiro no topo)
+    res = supabase.table('reservations').select('*')\
+        .gte('reservation_date', hoje)\
+        .order('reservation_date', desc=False)\
+        .order('start_time', desc=False)\
+        .execute()
     
     for r in res.data:
-        # Formata Data para DD/MM/YY
+        # Formata Data para Exibição: DD/MM/YY
         dt_obj = datetime.strptime(r['reservation_date'], '%Y-%m-%d')
         r['display_date'] = dt_obj.strftime('%d/%m/%y')
-        # Formata Hora para HH:MM
+        
+        # Formata Hora para Exibição: HH:MM
         r['display_start'] = r['start_time'][:5]
         r['display_end'] = r['end_time'][:5]
         
