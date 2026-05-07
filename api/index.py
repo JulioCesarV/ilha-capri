@@ -39,11 +39,8 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
 def index():
     user = get_logged_user()
     
-    # 1. Pegamos a data de hoje no formato do banco (AAAA-MM-DD)
     hoje = datetime.now().strftime('%Y-%m-%d')
     
-    # 2. Buscamos apenas reservas onde a data é MAIOR ou IGUAL a hoje (.gte)
-    # 3. Ordenamos de forma CRESCENTE (a mais próxima primeiro no topo)
     res = supabase.table('reservations').select('*')\
         .gte('reservation_date', hoje)\
         .order('reservation_date', desc=False)\
@@ -51,11 +48,8 @@ def index():
         .execute()
     
     for r in res.data:
-        # Formata Data para Exibição: DD/MM/YY
         dt_obj = datetime.strptime(r['reservation_date'], '%Y-%m-%d')
         r['display_date'] = dt_obj.strftime('%d/%m/%y')
-        
-        # Formata Hora para Exibição: HH:MM
         r['display_start'] = r['start_time'][:5]
         r['display_end'] = r['end_time'][:5]
         
@@ -94,101 +88,92 @@ def login():
             flash("❌ E-mail ou senha incorretos.")
     return render_template('login.html')
 
-# --- ROTA: RESERVAR (Com a trava de inadimplência) ---
 @app.route('/reservar', methods=['GET', 'POST'])
 def reservar():
     user = get_logged_user()
     if not user: return redirect(url_for('login'))
 
-    # VERIFICAÇÃO DE INADIMPLÊNCIA
     if user.get('is_blocked'):
-        flash("⚠️ Atenção: Sua unidade possui pendências financeiras. A reserva não poderá ser efetuada por motivos de inadimplência. Entre em contato com o síndico para regularizar.")
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        data, inicio, fim = request.form.get('data'), request.form.get('inicio'), request.form.get('fim')
-        
-        # (Mantenha as validações de domingo, horário e conflito que já funcionam...)
-        dt = datetime.strptime(data, '%Y-%m-%d')
-        if dt.weekday() == 6:
-            flash("⚠️ Domingos não são permitidos.")
-            return redirect(url_for('reservar'))
-        if verificar_conflito(data, inicio, fim):
-            flash("⚠️ Horário já ocupado.")
-            return redirect(url_for('reservar'))
-
-        supabase.table('reservations').insert({
-            "user_id": user['id'], "unit_number": user['unit_number'],
-            "reservation_date": data, "start_time": inicio, "end_time": fim
-        }).execute()
-        return redirect(url_for('index'))
-    return render_template('reservar.html')
-
-# --- ROTA ADMIN: BLOQUEAR/DESBLOQUEAR USUÁRIO ---
-@app.route('/admin/usuario/toggle_block/<id>')
-def toggle_block(id):
-    user = get_logged_user()
-    if not user or not user['is_admin']: return redirect(url_for('index'))
-    
-    # Busca o status atual
-    target = supabase.table('profiles').select('is_blocked').eq('id', id).single().execute()
-    novo_status = not target.data['is_blocked']
-    
-    # Atualiza
-    supabase.table('profiles').update({"is_blocked": novo_status}).eq('id', id).execute()
-    
-    status_txt = "Bloqueado (Inadimplente)" if novo_status else "Liberado"
-    flash(f"Status da unidade atualizado para: {status_txt}")
-    return redirect(url_for('admin_usuarios'))
-
-@app.route('/editar/<id>', methods=['GET', 'POST'])
-def editar(id):
-    user = get_logged_user()
-    # Busca os dados atuais da reserva
-    res_data = supabase.table('reservations').select('*').eq('id', id).maybe_single().execute().data
-    
-    if not user or not res_data: 
-        return redirect(url_for('index'))
-    
-    # Segurança: Só o dono da unidade ou Admin pode editar
-    if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
-        flash("⚠️ Você não tem permissão para editar esta reserva.")
+        flash("⚠️ Sua unidade possui pendências. A reserva não pode ser efetuada. Procure o síndico.")
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         data = request.form.get('data')
-        inicio = request.form.get('inicio')
-        fim = request.form.get('fim')
+        inicio_str = request.form.get('inicio')
+        fim_str = request.form.get('fim')
 
-        # --- NOVA TRAVA: Não permite editar para Domingo ---
+        # Conversão para objetos de tempo para validação rigorosa
+        form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
+        form_fim = datetime.strptime(fim_str, '%H:%M').time()
+        limite_inicio = datetime.strptime('08:00', '%H:%M').time()
+        limite_fim = datetime.strptime('22:00', '%H:%M').time()
+
+        # TRAVA: Lei do Silêncio
+        if form_inicio < limite_inicio or form_fim > limite_fim:
+            flash("⚠️ Erro: Horário permitido apenas das 08:00 às 22:00.")
+            return redirect(url_for('reservar'))
+
+        # TRAVA: Domingo
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
-            flash("⚠️ Erro: Não é permitido alterar reservas para domingos.")
-            return redirect(url_for('editar', id=id))
+            flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
+            return redirect(url_for('reservar'))
 
-        # --- NOVA TRAVA: Lei do silêncio na edição (08h às 22h) ---
-        h_in = int(inicio.split(':')[0])
-        h_out = int(fim.split(':')[0])
-        m_out = int(fim.split(':')[1])
-        if h_in < 8 or h_out > 22 or (h_out == 22 and m_out > 0):
-            flash("⚠️ Erro: O novo horário fere a lei do silêncio (08:00 às 22:00).")
-            return redirect(url_for('editar', id=id))
+        # TRAVA: Conflito
+        if verificar_conflito(data, inicio_str, fim_str):
+            flash("⚠️ Erro: Este horário já está ocupado.")
+            return redirect(url_for('reservar'))
 
-        # --- TRAVA: Conflito de horário ---
-        if verificar_conflito(data, inicio, fim, id):
-            flash("⚠️ Erro: Esse novo horário já está ocupado por outra unidade.")
-            return redirect(url_for('editar', id=id))
-
-        # Se passou por tudo, atualiza
-        supabase.table('reservations').update({
-            "reservation_date": data, 
-            "start_time": inicio, 
-            "end_time": fim
-        }).eq('id', id).execute()
-        
-        flash("✅ Reserva atualizada com sucesso!")
+        supabase.table('reservations').insert({
+            "user_id": user['id'], "unit_number": user['unit_number'],
+            "reservation_date": data, "start_time": inicio_str, "end_time": fim_str
+        }).execute()
+        flash("✅ Reserva realizada!")
         return redirect(url_for('index'))
-        
+    return render_template('reservar.html')
+
+@app.route('/editar/<id>', methods=['GET', 'POST'])
+def editar(id):
+    user = get_logged_user()
+    res_data = supabase.table('reservations').select('*').eq('id', id).maybe_single().execute().data
+    
+    if not user or not res_data: return redirect(url_for('index'))
+    
+    if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
+        flash("⚠️ Sem permissão para editar.")
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        data = request.form.get('data')
+        inicio_str = request.form.get('inicio')
+        fim_str = request.form.get('fim')
+
+        form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
+        form_fim = datetime.strptime(fim_str, '%H:%M').time()
+        limite_inicio = datetime.strptime('08:00', '%H:%M').time()
+        limite_fim = datetime.strptime('22:00', '%H:%M').time()
+
+        # TRAVA: Lei do Silêncio na edição
+        if form_inicio < limite_inicio or form_fim > limite_fim:
+            flash("⚠️ Erro: Horário permitido apenas das 08:00 às 22:00.")
+            return redirect(url_for('editar', id=id))
+
+        # TRAVA: Domingo na edição
+        dt = datetime.strptime(data, '%Y-%m-%d')
+        if dt.weekday() == 6:
+            flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
+            return redirect(url_for('editar', id=id))
+
+        # TRAVA: Conflito na edição
+        if verificar_conflito(data, inicio_str, fim_str, id):
+            flash("⚠️ Erro: Conflito de horário.")
+            return redirect(url_for('editar', id=id))
+
+        supabase.table('reservations').update({
+            "reservation_date": data, "start_time": inicio_str, "end_time": fim_str
+        }).eq('id', id).execute()
+        flash("✅ Atualizado com sucesso!")
+        return redirect(url_for('index'))
     return render_template('editar.html', r=res_data)
 
 @app.route('/delete/<id>')
@@ -196,6 +181,7 @@ def delete(id):
     user = get_logged_user()
     if user:
         supabase.table('reservations').delete().eq('id', id).execute()
+        flash("✅ Removida.")
     return redirect(url_for('index'))
 
 @app.route('/admin/usuarios')
@@ -204,18 +190,21 @@ def admin_usuarios():
     if not user or not user['is_admin']: return redirect(url_for('index'))
     
     profiles = supabase.table('profiles').select('*').order('unit_number').execute()
-    
-    # Prepara os dados para o link de WhatsApp
     for p in profiles.data:
-        # Remove tudo que não é número (parênteses, espaços, traços)
         raw_phone = ''.join(filter(str.isdigit, p['whatsapp']))
-        # Se o usuário não digitou 55 no início, nós adicionamos
-        if not raw_phone.startswith('55'):
-            raw_phone = '55' + raw_phone
-        # Cria o link final
+        if not raw_phone.startswith('55'): raw_phone = '55' + raw_phone
         p['wa_link'] = f"https://wa.me/{raw_phone}"
         
     return render_template('usuarios.html', profiles=profiles.data, user=user)
+
+@app.route('/admin/usuario/toggle_block/<id>')
+def toggle_block(id):
+    user = get_logged_user()
+    if not user or not user['is_admin']: return redirect(url_for('index'))
+    target = supabase.table('profiles').select('is_blocked').eq('id', id).single().execute()
+    novo_status = not target.data['is_blocked']
+    supabase.table('profiles').update({"is_blocked": novo_status}).eq('id', id).execute()
+    return redirect(url_for('admin_usuarios'))
 
 @app.route('/admin/usuario/editar/<id>', methods=['GET', 'POST'])
 def admin_editar_usuario(id):
@@ -229,6 +218,7 @@ def admin_editar_usuario(id):
             "unit_number": request.form.get('unidade'),
             "is_admin": request.form.get('is_admin') == '1'
         }).eq('id', id).execute()
+        flash("✅ Morador atualizado!")
         return redirect(url_for('admin_usuarios'))
     target = supabase.table('profiles').select('*').eq('id', id).maybe_single().execute()
     return render_template('admin_edit_user.html', u=target.data)
@@ -238,6 +228,7 @@ def admin_delete_usuario(id):
     user = get_logged_user()
     if user and user['is_admin']:
         supabase.table('profiles').delete().eq('id', id).execute()
+        flash("✅ Morador removido.")
     return redirect(url_for('admin_usuarios'))
 
 @app.route('/logout')
