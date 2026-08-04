@@ -187,15 +187,45 @@ def delete(id):
 @app.route('/admin/usuarios')
 def admin_usuarios():
     user = get_logged_user()
-    if not user or not user['is_admin']: return redirect(url_for('index'))
+    if not user or not user['is_admin']: 
+        return redirect(url_for('index'))
     
-    profiles = supabase.table('profiles').select('*').order('unit_number').execute()
-    for p in profiles.data:
+    # Busca todos os perfis
+    profiles_res = supabase.table('profiles').select('*').order('unit_number').execute()
+    profiles = profiles_res.data
+    
+    # Busca todas as reservas para processar as estatísticas
+    # (Buscamos todas para poder contar as que já passaram)
+    reservations_res = supabase.table('reservations').select('*').execute()
+    all_reservations = reservations_res.data
+    
+    hoje = datetime.now().date()
+
+    for p in profiles:
+        # Filtrar apenas as reservas deste morador específico
+        user_res = [r for r in all_reservations if r['user_id'] == p['id']]
+        
+        # 1. Contagem de reservas "concretizadas" (Data <= hoje)
+        # Se a reserva está no banco e a data já passou ou é hoje, ela "se concretizou"
+        past_res = [r for r in user_res if datetime.strptime(r['reservation_date'], '%Y-%m-%d').date() <= hoje]
+        p['total_uses'] = len(past_res)
+        
+        # 2. Data da última reserva concretizada
+        if past_res:
+            # Ordena as datas passadas para pegar a mais recente
+            past_res.sort(key=lambda x: x['reservation_date'], reverse=True)
+            last_date_obj = datetime.strptime(past_res[0]['reservation_date'], '%Y-%m-%d')
+            p['last_use'] = last_date_obj.strftime('%d/%m/%y')
+        else:
+            p['last_use'] = "Nenhuma"
+
+        # 3. Preparar Link do WhatsApp (mantendo a lógica anterior)
         raw_phone = ''.join(filter(str.isdigit, p['whatsapp']))
-        if not raw_phone.startswith('55'): raw_phone = '55' + raw_phone
+        if not raw_phone.startswith('55'): 
+            raw_phone = '55' + raw_phone
         p['wa_link'] = f"https://wa.me/{raw_phone}"
         
-    return render_template('usuarios.html', profiles=profiles.data, user=user)
+    return render_template('usuarios.html', profiles=profiles, user=user)
 
 @app.route('/admin/usuario/toggle_block/<id>')
 def toggle_block(id):
