@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,10 +35,31 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
         return len(conflitos) > 0
     return len(res.data) > 0
 
+# --- FUNÇÃO AUXILIAR: VALIDAÇÃO DA REGRA DE 15 DIAS ---
+def validar_regra_15_dias(user_id, data_escolhida_str, reserva_id_atual=None):
+    data_nova = datetime.strptime(data_escolhida_str, '%Y-%m-%d').date()
+    
+    # Busca todas as reservas da unidade
+    res = supabase.table('reservations').select('id, reservation_date').eq('user_id', user_id).execute()
+    
+    for r in res.data:
+        # Se estiver editando, ignora a própria reserva
+        if reserva_id_atual and str(r['id']) == str(reserva_id_atual):
+            continue
+            
+        data_existente = datetime.strptime(r['reservation_date'], '%Y-%m-%d').date()
+        
+        # Calcula a diferença absoluta em dias
+        diferenca = abs((data_nova - data_existente).days)
+        
+        if diferenca < 15:
+            return False, data_existente.strftime('%d/%m/%Y')
+            
+    return True, None
+
 @app.route('/')
 def index():
     user = get_logged_user()
-    
     hoje = datetime.now().strftime('%Y-%m-%d')
     
     res = supabase.table('reservations').select('*')\
@@ -102,24 +123,27 @@ def reservar():
         inicio_str = request.form.get('inicio')
         fim_str = request.form.get('fim')
 
-        # Conversão para objetos de tempo para validação rigorosa
+        # REGRA DE 15 DIAS (Admins estão isentos)
+        if not user['is_admin']:
+            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data)
+            if not passou_regra:
+                flash(f"⚠️ Regimento: Você já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
+                return redirect(url_for('reservar'))
+
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
         form_fim = datetime.strptime(fim_str, '%H:%M').time()
         limite_inicio = datetime.strptime('08:00', '%H:%M').time()
         limite_fim = datetime.strptime('22:00', '%H:%M').time()
 
-        # TRAVA: Lei do Silêncio
         if form_inicio < limite_inicio or form_fim > limite_fim:
             flash("⚠️ Erro: Horário permitido apenas das 08:00 às 22:00.")
             return redirect(url_for('reservar'))
 
-        # TRAVA: Domingo
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
             flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
             return redirect(url_for('reservar'))
 
-        # TRAVA: Conflito
         if verificar_conflito(data, inicio_str, fim_str):
             flash("⚠️ Erro: Este horário já está ocupado.")
             return redirect(url_for('reservar'))
@@ -148,23 +172,27 @@ def editar(id):
         inicio_str = request.form.get('inicio')
         fim_str = request.form.get('fim')
 
+        # REGRA DE 15 DIAS NA EDIÇÃO
+        if not user['is_admin']:
+            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data, id)
+            if not passou_regra:
+                flash(f"⚠️ Intervalo insuficiente: você possui outra reserva em {data_conflito}. O mínimo é 15 dias entre usos.")
+                return redirect(url_for('editar', id=id))
+
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
         form_fim = datetime.strptime(fim_str, '%H:%M').time()
         limite_inicio = datetime.strptime('08:00', '%H:%M').time()
         limite_fim = datetime.strptime('22:00', '%H:%M').time()
 
-        # TRAVA: Lei do Silêncio na edição
         if form_inicio < limite_inicio or form_fim > limite_fim:
             flash("⚠️ Erro: Horário permitido apenas das 08:00 às 22:00.")
             return redirect(url_for('editar', id=id))
 
-        # TRAVA: Domingo na edição
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
             flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
             return redirect(url_for('editar', id=id))
 
-        # TRAVA: Conflito na edição
         if verificar_conflito(data, inicio_str, fim_str, id):
             flash("⚠️ Erro: Conflito de horário.")
             return redirect(url_for('editar', id=id))
@@ -190,36 +218,24 @@ def admin_usuarios():
     if not user or not user['is_admin']: 
         return redirect(url_for('index'))
     
-    # Busca todos os perfis
     profiles_res = supabase.table('profiles').select('*').order('unit_number').execute()
     profiles = profiles_res.data
-    
-    # Busca todas as reservas para processar as estatísticas
-    # (Buscamos todas para poder contar as que já passaram)
     reservations_res = supabase.table('reservations').select('*').execute()
     all_reservations = reservations_res.data
-    
     hoje = datetime.now().date()
 
     for p in profiles:
-        # Filtrar apenas as reservas deste morador específico
         user_res = [r for r in all_reservations if r['user_id'] == p['id']]
-        
-        # 1. Contagem de reservas "concretizadas" (Data <= hoje)
-        # Se a reserva está no banco e a data já passou ou é hoje, ela "se concretizou"
         past_res = [r for r in user_res if datetime.strptime(r['reservation_date'], '%Y-%m-%d').date() <= hoje]
         p['total_uses'] = len(past_res)
         
-        # 2. Data da última reserva concretizada
         if past_res:
-            # Ordena as datas passadas para pegar a mais recente
             past_res.sort(key=lambda x: x['reservation_date'], reverse=True)
             last_date_obj = datetime.strptime(past_res[0]['reservation_date'], '%Y-%m-%d')
             p['last_use'] = last_date_obj.strftime('%d/%m/%y')
         else:
             p['last_use'] = "Nenhuma"
 
-        # 3. Preparar Link do WhatsApp (mantendo a lógica anterior)
         raw_phone = ''.join(filter(str.isdigit, p['whatsapp']))
         if not raw_phone.startswith('55'): 
             raw_phone = '55' + raw_phone
