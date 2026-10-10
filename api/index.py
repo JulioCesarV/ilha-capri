@@ -60,11 +60,11 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
     return len(res.data) > 0
 
 # --- FUNÇÃO AUXILIAR: VALIDAÇÃO DA REGRA DE 15 DIAS ---
-def validar_regra_15_dias(user_id, data_escolhida_str, reserva_id_atual=None):
+def validar_regra_15_dias(unit_number, data_escolhida_str, reserva_id_atual=None):
     data_nova = datetime.strptime(data_escolhida_str, '%Y-%m-%d').date()
 
     db = get_supabase()
-    res = db.table('reservations').select('id, reservation_date').eq('user_id', user_id).execute()
+    res = db.table('reservations').select('id, reservation_date').eq('unit_number', unit_number).execute()
 
     for r in res.data:
         if reserva_id_atual and str(r['id']) == str(reserva_id_atual):
@@ -158,7 +158,7 @@ def reservar():
 
         # REGRA DE 15 DIAS (Admins estão isentos)
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data)
+            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data)
             if not passou_regra:
                 flash(f"⚠️ Regimento: Você já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
                 return redirect(url_for('reservar'))
@@ -221,7 +221,7 @@ def editar(id):
 
         # REGRA DE 15 DIAS NA EDIÇÃO
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data, id)
+            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data, id)
             if not passou_regra:
                 flash(f"⚠️ Intervalo insuficiente: você possui outra reserva em {data_conflito}. O mínimo é 15 dias entre usos.")
                 return redirect(url_for('editar', id=id))
