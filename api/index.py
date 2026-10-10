@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__, template_folder='../templates')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'capri_secret_key')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("FLASK_SECRET_KEY não definida. Configure no .env (local) ou nas Environment Variables (Vercel).")
 
 supabase: Client = create_client(
     os.environ.get('SUPABASE_URL'), 
@@ -81,6 +83,12 @@ def signup():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if password != confirm_password:
+            flash("⚠️ As senhas não coincidem. Tente novamente.")
+            return redirect(url_for('signup'))
+
         try:
             auth_res = supabase.auth.sign_up({"email": email, "password": password})
             if auth_res.user:
@@ -144,6 +152,14 @@ def reservar():
             flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
             return redirect(url_for('reservar'))
 
+        if form_fim <= form_inicio:
+            flash("⚠️ Erro: O horário final deve ser depois do horário inicial.")
+            return redirect(url_for('reservar'))
+
+        if dt.date() < datetime.now().date():
+            flash("⚠️ Erro: Não é possível reservar para datas passadas.")
+            return redirect(url_for('reservar'))
+
         if verificar_conflito(data, inicio_str, fim_str):
             flash("⚠️ Erro: Este horário já está ocupado.")
             return redirect(url_for('reservar'))
@@ -165,6 +181,10 @@ def editar(id):
     
     if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
         flash("⚠️ Sem permissão para editar.")
+        return redirect(url_for('index'))
+
+    if user.get('is_blocked'):
+        flash("⚠️ Sua unidade possui pendências. Não é possível editar reservas. Procure o síndico.")
         return redirect(url_for('index'))
 
     if request.method == 'POST':
@@ -191,6 +211,14 @@ def editar(id):
         dt = datetime.strptime(data, '%Y-%m-%d')
         if dt.weekday() == 6:
             flash("⚠️ Erro: Não são permitidas reservas aos domingos.")
+            return redirect(url_for('editar', id=id))
+
+        if form_fim <= form_inicio:
+            flash("⚠️ Erro: O horário final deve ser depois do horário inicial.")
+            return redirect(url_for('editar', id=id))
+
+        if dt.date() < datetime.now().date():
+            flash("⚠️ Erro: Não é possível reservar para datas passadas.")
             return redirect(url_for('editar', id=id))
 
         if verificar_conflito(data, inicio_str, fim_str, id):
