@@ -160,7 +160,7 @@ def reservar():
         if not user['is_admin']:
             passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data)
             if not passou_regra:
-                flash(f"⚠️ Regimento: Você já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
+                flash(f"⚠️ Regimento: Sua unidade já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
                 return redirect(url_for('reservar'))
 
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
@@ -316,7 +316,7 @@ def admin_usuarios():
 
     return render_template('usuarios.html', profiles=profiles, user=user)
 
-@app.route('/admin/usuario/toggle_block/<id>')
+@app.route('/admin/usuario/toggle_block/<id>', methods=['POST'])
 def toggle_block(id):
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
@@ -344,7 +344,7 @@ def admin_editar_usuario(id):
     target = db.table('profiles').select('*').eq('id', id).maybe_single().execute()
     return render_template('admin_edit_user.html', u=target.data)
 
-@app.route('/admin/usuario/delete/<id>')
+@app.route('/admin/usuario/delete/<id>', methods=['POST'])
 def admin_delete_usuario(id):
     user = get_logged_user()
     if user and user['is_admin']:
