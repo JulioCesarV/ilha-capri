@@ -204,12 +204,25 @@ def editar(id):
         return redirect(url_for('index'))
     return render_template('editar.html', r=res_data)
 
-@app.route('/delete/<id>')
+@app.route('/delete/<id>', methods=['POST'])
 def delete(id):
     user = get_logged_user()
-    if user:
-        supabase.table('reservations').delete().eq('id', id).execute()
-        flash("✅ Removida.")
+    if not user:
+        return redirect(url_for('login'))
+
+    res = supabase.table('reservations').select('id, unit_number')\
+        .eq('id', id).maybe_single().execute().data
+
+    if not res:
+        flash("⚠️ Reserva não encontrada.")
+        return redirect(url_for('index'))
+
+    if not (user['is_admin'] or str(user['unit_number']) == str(res['unit_number'])):
+        flash("⚠️ Você não tem permissão para excluir esta reserva.")
+        return redirect(url_for('index'))
+
+    supabase.table('reservations').delete().eq('id', id).execute()
+    flash("✅ Reserva removida.")
     return redirect(url_for('index'))
 
 @app.route('/admin/usuarios')
