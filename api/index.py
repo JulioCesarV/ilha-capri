@@ -44,7 +44,8 @@ def get_logged_user():
             return None
         profile = db.table('profiles').select('*').eq('id', user_res.user.id).maybe_single().execute()
         return profile.data
-    except Exception:
+    except Exception as e:
+        app.logger.error(f"Erro em get_logged_user: {e}")
         return None
 
 def verificar_conflito(data, inicio, fim, reserva_id=None):
@@ -138,7 +139,8 @@ def login():
             })
             session['supabase_token'] = res.session.access_token
             return redirect(url_for('index'))
-        except Exception:
+        except Exception as e:
+            app.logger.error(f"Erro em login: {e}")
             flash("❌ E-mail ou senha incorretos.")
     return render_template('login.html')
 
