@@ -44,7 +44,8 @@ def get_logged_user():
             return None
         profile = db.table('profiles').select('*').eq('id', user_res.user.id).maybe_single().execute()
         return profile.data
-    except Exception:
+    except Exception as e:
+        app.logger.error(f"Erro em get_logged_user: {e}")
         return None
 
 def verificar_conflito(data, inicio, fim, reserva_id=None):
@@ -60,11 +61,11 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
     return len(res.data) > 0
 
 # --- FUNÇÃO AUXILIAR: VALIDAÇÃO DA REGRA DE 15 DIAS ---
-def validar_regra_15_dias(user_id, data_escolhida_str, reserva_id_atual=None):
+def validar_regra_15_dias(unit_number, data_escolhida_str, reserva_id_atual=None):
     data_nova = datetime.strptime(data_escolhida_str, '%Y-%m-%d').date()
 
     db = get_supabase()
-    res = db.table('reservations').select('id, reservation_date').eq('user_id', user_id).execute()
+    res = db.table('reservations').select('id, reservation_date').eq('unit_number', unit_number).execute()
 
     for r in res.data:
         if reserva_id_atual and str(r['id']) == str(reserva_id_atual):
@@ -138,7 +139,8 @@ def login():
             })
             session['supabase_token'] = res.session.access_token
             return redirect(url_for('index'))
-        except Exception:
+        except Exception as e:
+            app.logger.error(f"Erro em login: {e}")
             flash("❌ E-mail ou senha incorretos.")
     return render_template('login.html')
 
@@ -158,9 +160,9 @@ def reservar():
 
         # REGRA DE 15 DIAS (Admins estão isentos)
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data)
+            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data)
             if not passou_regra:
-                flash(f"⚠️ Regimento: Você já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
+                flash(f"⚠️ Regimento: Sua unidade já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
                 return redirect(url_for('reservar'))
 
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
@@ -221,7 +223,7 @@ def editar(id):
 
         # REGRA DE 15 DIAS NA EDIÇÃO
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['id'], data, id)
+            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data, id)
             if not passou_regra:
                 flash(f"⚠️ Intervalo insuficiente: você possui outra reserva em {data_conflito}. O mínimo é 15 dias entre usos.")
                 return redirect(url_for('editar', id=id))
@@ -316,7 +318,7 @@ def admin_usuarios():
 
     return render_template('usuarios.html', profiles=profiles, user=user)
 
-@app.route('/admin/usuario/toggle_block/<id>')
+@app.route('/admin/usuario/toggle_block/<id>', methods=['POST'])
 def toggle_block(id):
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
@@ -332,6 +334,10 @@ def admin_editar_usuario(id):
     if not user or not user['is_admin']: return redirect(url_for('index'))
     db = get_supabase()
     if request.method == 'POST':
+        # Não permite um admin se rebaixar
+        if str(id) == str(user['id']) and request.form.get('is_admin') != '1':
+            flash("⚠️ Você não pode remover seu próprio acesso de administrador.")
+            return redirect(url_for('admin_editar_usuario', id=id))
         db.table('profiles').update({
             "full_name": request.form.get('nome'),
             "email": request.form.get('email'),
@@ -342,9 +348,9 @@ def admin_editar_usuario(id):
         flash("✅ Morador atualizado!")
         return redirect(url_for('admin_usuarios'))
     target = db.table('profiles').select('*').eq('id', id).maybe_single().execute()
-    return render_template('admin_edit_user.html', u=target.data)
+    return render_template('admin_edit_user.html', u=target.data, current_user=user)
 
-@app.route('/admin/usuario/delete/<id>')
+@app.route('/admin/usuario/delete/<id>', methods=['POST'])
 def admin_delete_usuario(id):
     user = get_logged_user()
     if user and user['is_admin']:
