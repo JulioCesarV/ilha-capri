@@ -29,7 +29,7 @@ Este é um sistema web minimalista e funcional desenvolvido para a gestão de re
 - **Autenticação:** Supabase Auth
 - **Frontend:** HTML5, [Tailwind CSS](https://tailwindcss.com/) (Mobile-First)
 - **Hospedagem:** [Vercel](https://vercel.com/)
-- **Integração:** WhatsApp API
+- **Integração:** Links diretos do WhatsApp (`wa.me`) — sem uso de API oficial
 
 ---
 
@@ -38,8 +38,9 @@ Este é um sistema web minimalista e funcional desenvolvido para a gestão de re
 1. **Horário de Funcionamento:** Reservas permitidas apenas das 08:00 às 22:00.
 2. **Dias Permitidos:** De segunda a sábado. Domingos são bloqueados para manutenção/limpeza.
 3. **Conflito de Horário:** O sistema impede automaticamente duas reservas no mesmo intervalo de tempo.
-4. **Segurança (RLS):** Tabelas protegidas por *Row Level Security* no banco de dados, garantindo que um morador não altere dados de outro.
-5. **Privacidade:** O Dashboard oculta reservas que já passaram, mantendo a tela inicial sempre limpa e atualizada.
+4. **Regra dos 15 dias:** Cada unidade pode ter apenas uma reserva a cada 15 dias. Vale para todas as contas da mesma unidade.
+5. **Segurança (RLS):** Tabelas protegidas por *Row Level Security* no banco de dados, garantindo que um morador não altere dados de outro.
+6. **Privacidade:** O Dashboard oculta reservas que já passaram, mantendo a tela inicial sempre limpa e atualizada.
 
 ---
 
@@ -63,7 +64,9 @@ No ambiente local (arquivo `.env`) ou na Vercel, configure as seguintes chaves:
 ├── templates/          # Arquivos HTML (Frontend)
 ├── requirements.txt    # Dependências do Python
 ├── vercel.json         # Configuração de deploy da Vercel
-└── .gitignore          # Arquivos ignorados pelo Git (.env)
+├── .gitignore          # Arquivos ignorados pelo Git (.env)
+├── README.md           # Este arquivo (visão geral)
+└── CONTEXTO.md         # Contexto técnico completo
 ```
 
 ---
@@ -76,3 +79,16 @@ Este projeto foi desenvolvido para fins não lucrativos e de uso exclusivo do co
 ### 👨‍💻 Autor
 Desenvolvido para organizar e facilitar a convivência entre os condôminos.
 
+---
+
+## 📚 Documentação adicional
+
+- [CONTEXTO.md](./CONTEXTO.md) — contexto técnico completo, decisões,
+  histórico de correções, bugs conhecidos e processo de desenvolvimento.
+- [README.md](./README.md) — este arquivo (visão geral).
+
+---
+
+### Última atualização
+
+**10/10/2026** — [ver contexto completo](./CONTEXTO.md)
