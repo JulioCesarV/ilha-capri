@@ -7,31 +7,53 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__, template_folder='../templates')
+
 app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY não definida. Configure no .env (local) ou nas Environment Variables (Vercel).")
 
-supabase: Client = create_client(
-    os.environ.get('SUPABASE_URL'), 
-    os.environ.get('SUPABASE_KEY')
-)
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
+
+# --- CLIENTE SUPABASE ISOLADO POR REQUEST ---
+# Não usamos mais um cliente global, pois o SDK do Supabase guarda a sessão
+# do último login dentro do cliente, causando vazamento de sessão entre
+# requisições de usuários diferentes.
+def get_supabase():
+    """Cria um cliente Supabase novo por request, autenticado com o JWT
+    do usuário logado (se houver). Isso faz o RLS funcionar corretamente."""
+    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    token = session.get('supabase_token')
+    if token:
+        try:
+            client.postgrest.auth(token)
+        except Exception:
+            # Token inválido/expirado — segue como anon; o get_logged_user
+            # vai retornar None e a rota redireciona pro login.
+            pass
+    return client
 
 def get_logged_user():
     token = session.get('supabase_token')
-    if not token: return None
+    if not token:
+        return None
     try:
-        user_res = supabase.auth.get_user(token)
-        if not user_res.user: return None
-        profile = supabase.table('profiles').select('*').eq('id', user_res.user.id).maybe_single().execute()
+        db = get_supabase()
+        user_res = db.auth.get_user(token)
+        if not user_res.user:
+            return None
+        profile = db.table('profiles').select('*').eq('id', user_res.user.id).maybe_single().execute()
         return profile.data
-    except: return None
+    except Exception:
+        return None
 
 def verificar_conflito(data, inicio, fim, reserva_id=None):
-    res = supabase.table('reservations').select('*')\
+    db = get_supabase()
+    res = db.table('reservations').select('*')\
         .eq('reservation_date', data)\
         .lt('start_time', fim)\
         .gt('end_time', inicio).execute()
-    
+
     if reserva_id:
         conflitos = [r for r in res.data if str(r['id']) != str(reserva_id)]
         return len(conflitos) > 0
@@ -40,42 +62,40 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
 # --- FUNÇÃO AUXILIAR: VALIDAÇÃO DA REGRA DE 15 DIAS ---
 def validar_regra_15_dias(user_id, data_escolhida_str, reserva_id_atual=None):
     data_nova = datetime.strptime(data_escolhida_str, '%Y-%m-%d').date()
-    
-    # Busca todas as reservas da unidade
-    res = supabase.table('reservations').select('id, reservation_date').eq('user_id', user_id).execute()
-    
+
+    db = get_supabase()
+    res = db.table('reservations').select('id, reservation_date').eq('user_id', user_id).execute()
+
     for r in res.data:
-        # Se estiver editando, ignora a própria reserva
         if reserva_id_atual and str(r['id']) == str(reserva_id_atual):
             continue
-            
+
         data_existente = datetime.strptime(r['reservation_date'], '%Y-%m-%d').date()
-        
-        # Calcula a diferença absoluta em dias
         diferenca = abs((data_nova - data_existente).days)
-        
+
         if diferenca < 15:
             return False, data_existente.strftime('%d/%m/%Y')
-            
+
     return True, None
 
 @app.route('/')
 def index():
     user = get_logged_user()
     hoje = datetime.now().strftime('%Y-%m-%d')
-    
-    res = supabase.table('reservations').select('*')\
+
+    db = get_supabase()
+    res = db.table('reservations').select('*')\
         .gte('reservation_date', hoje)\
         .order('reservation_date', desc=False)\
         .order('start_time', desc=False)\
         .execute()
-    
+
     for r in res.data:
         dt_obj = datetime.strptime(r['reservation_date'], '%Y-%m-%d')
         r['display_date'] = dt_obj.strftime('%d/%m/%y')
         r['display_start'] = r['start_time'][:5]
         r['display_end'] = r['end_time'][:5]
-        
+
     return render_template('index.html', reservations=res.data, user=user)
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -90,9 +110,10 @@ def signup():
             return redirect(url_for('signup'))
 
         try:
-            auth_res = supabase.auth.sign_up({"email": email, "password": password})
+            db = get_supabase()
+            auth_res = db.auth.sign_up({"email": email, "password": password})
             if auth_res.user:
-                supabase.table('profiles').insert({
+                db.table('profiles').insert({
                     "id": auth_res.user.id,
                     "email": email,
                     "full_name": f"{request.form.get('nome')} {request.form.get('sobrenome')}",
@@ -110,10 +131,14 @@ def signup():
 def login():
     if request.method == 'POST':
         try:
-            res = supabase.auth.sign_in_with_password({"email": request.form.get('email'), "password": request.form.get('password')})
+            db = get_supabase()
+            res = db.auth.sign_in_with_password({
+                "email": request.form.get('email'),
+                "password": request.form.get('password')
+            })
             session['supabase_token'] = res.session.access_token
             return redirect(url_for('index'))
-        except:
+        except Exception:
             flash("❌ E-mail ou senha incorretos.")
     return render_template('login.html')
 
@@ -164,7 +189,8 @@ def reservar():
             flash("⚠️ Erro: Este horário já está ocupado.")
             return redirect(url_for('reservar'))
 
-        supabase.table('reservations').insert({
+        db = get_supabase()
+        db.table('reservations').insert({
             "user_id": user['id'], "unit_number": user['unit_number'],
             "reservation_date": data, "start_time": inicio_str, "end_time": fim_str
         }).execute()
@@ -175,10 +201,11 @@ def reservar():
 @app.route('/editar/<id>', methods=['GET', 'POST'])
 def editar(id):
     user = get_logged_user()
-    res_data = supabase.table('reservations').select('*').eq('id', id).maybe_single().execute().data
-    
+    db = get_supabase()
+    res_data = db.table('reservations').select('*').eq('id', id).maybe_single().execute().data
+
     if not user or not res_data: return redirect(url_for('index'))
-    
+
     if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
         flash("⚠️ Sem permissão para editar.")
         return redirect(url_for('index'))
@@ -225,7 +252,7 @@ def editar(id):
             flash("⚠️ Erro: Conflito de horário.")
             return redirect(url_for('editar', id=id))
 
-        supabase.table('reservations').update({
+        db.table('reservations').update({
             "reservation_date": data, "start_time": inicio_str, "end_time": fim_str
         }).eq('id', id).execute()
         flash("✅ Atualizado com sucesso!")
@@ -238,7 +265,8 @@ def delete(id):
     if not user:
         return redirect(url_for('login'))
 
-    res = supabase.table('reservations').select('id, unit_number')\
+    db = get_supabase()
+    res = db.table('reservations').select('id, unit_number')\
         .eq('id', id).maybe_single().execute().data
 
     if not res:
@@ -249,19 +277,20 @@ def delete(id):
         flash("⚠️ Você não tem permissão para excluir esta reserva.")
         return redirect(url_for('index'))
 
-    supabase.table('reservations').delete().eq('id', id).execute()
+    db.table('reservations').delete().eq('id', id).execute()
     flash("✅ Reserva removida.")
     return redirect(url_for('index'))
 
 @app.route('/admin/usuarios')
 def admin_usuarios():
     user = get_logged_user()
-    if not user or not user['is_admin']: 
+    if not user or not user['is_admin']:
         return redirect(url_for('index'))
-    
-    profiles_res = supabase.table('profiles').select('*').order('unit_number').execute()
+
+    db = get_supabase()
+    profiles_res = db.table('profiles').select('*').order('unit_number').execute()
     profiles = profiles_res.data
-    reservations_res = supabase.table('reservations').select('*').execute()
+    reservations_res = db.table('reservations').select('*').execute()
     all_reservations = reservations_res.data
     hoje = datetime.now().date()
 
@@ -269,7 +298,7 @@ def admin_usuarios():
         user_res = [r for r in all_reservations if r['user_id'] == p['id']]
         past_res = [r for r in user_res if datetime.strptime(r['reservation_date'], '%Y-%m-%d').date() <= hoje]
         p['total_uses'] = len(past_res)
-        
+
         if past_res:
             past_res.sort(key=lambda x: x['reservation_date'], reverse=True)
             last_date_obj = datetime.strptime(past_res[0]['reservation_date'], '%Y-%m-%d')
@@ -277,28 +306,33 @@ def admin_usuarios():
         else:
             p['last_use'] = "Nenhuma"
 
-        raw_phone = ''.join(filter(str.isdigit, p['whatsapp']))
-        if not raw_phone.startswith('55'): 
-            raw_phone = '55' + raw_phone
-        p['wa_link'] = f"https://wa.me/{raw_phone}"
-        
+        raw_phone = ''.join(filter(str.isdigit, p['whatsapp'] or ''))
+        if not raw_phone:
+            p['wa_link'] = None
+        else:
+            if not raw_phone.startswith('55'):
+                raw_phone = '55' + raw_phone
+            p['wa_link'] = f"https://wa.me/{raw_phone}"
+
     return render_template('usuarios.html', profiles=profiles, user=user)
 
 @app.route('/admin/usuario/toggle_block/<id>')
 def toggle_block(id):
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
-    target = supabase.table('profiles').select('is_blocked').eq('id', id).single().execute()
+    db = get_supabase()
+    target = db.table('profiles').select('is_blocked').eq('id', id).single().execute()
     novo_status = not target.data['is_blocked']
-    supabase.table('profiles').update({"is_blocked": novo_status}).eq('id', id).execute()
+    db.table('profiles').update({"is_blocked": novo_status}).eq('id', id).execute()
     return redirect(url_for('admin_usuarios'))
 
 @app.route('/admin/usuario/editar/<id>', methods=['GET', 'POST'])
 def admin_editar_usuario(id):
     user = get_logged_user()
     if not user or not user['is_admin']: return redirect(url_for('index'))
+    db = get_supabase()
     if request.method == 'POST':
-        supabase.table('profiles').update({
+        db.table('profiles').update({
             "full_name": request.form.get('nome'),
             "email": request.form.get('email'),
             "whatsapp": request.form.get('whatsapp'),
@@ -307,14 +341,15 @@ def admin_editar_usuario(id):
         }).eq('id', id).execute()
         flash("✅ Morador atualizado!")
         return redirect(url_for('admin_usuarios'))
-    target = supabase.table('profiles').select('*').eq('id', id).maybe_single().execute()
+    target = db.table('profiles').select('*').eq('id', id).maybe_single().execute()
     return render_template('admin_edit_user.html', u=target.data)
 
 @app.route('/admin/usuario/delete/<id>')
 def admin_delete_usuario(id):
     user = get_logged_user()
     if user and user['is_admin']:
-        supabase.table('profiles').delete().eq('id', id).execute()
+        db = get_supabase()
+        db.table('profiles').delete().eq('id', id).execute()
         flash("✅ Morador removido.")
     return redirect(url_for('admin_usuarios'))
 
