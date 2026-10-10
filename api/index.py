@@ -332,6 +332,10 @@ def admin_editar_usuario(id):
     if not user or not user['is_admin']: return redirect(url_for('index'))
     db = get_supabase()
     if request.method == 'POST':
+        # Não permite um admin se rebaixar
+        if str(id) == str(user['id']) and request.form.get('is_admin') != '1':
+            flash("⚠️ Você não pode remover seu próprio acesso de administrador.")
+            return redirect(url_for('admin_editar_usuario', id=id))
         db.table('profiles').update({
             "full_name": request.form.get('nome'),
             "email": request.form.get('email'),
@@ -342,7 +346,7 @@ def admin_editar_usuario(id):
         flash("✅ Morador atualizado!")
         return redirect(url_for('admin_usuarios'))
     target = db.table('profiles').select('*').eq('id', id).maybe_single().execute()
-    return render_template('admin_edit_user.html', u=target.data)
+    return render_template('admin_edit_user.html', u=target.data, current_user=user)
 
 @app.route('/admin/usuario/delete/<id>', methods=['POST'])
 def admin_delete_usuario(id):

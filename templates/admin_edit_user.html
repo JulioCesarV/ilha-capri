@@ -34,10 +34,14 @@
         <!-- Tipo de Acesso -->
         <div>
             <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Nível de Acesso</label>
-            <select name="is_admin" class="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-blue-500">
+            <select name="is_admin" class="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-blue-500" {% if u.id == current_user.id %}disabled{% endif %}>
                 <option value="0" {% if u.is_admin == 0 %}selected{% endif %}>Morador Padrão</option>
                 <option value="1" {% if u.is_admin == 1 %}selected{% endif %}>Administrador do Sistema</option>
             </select>
+            {% if u.id == current_user.id %}
+            <input type="hidden" name="is_admin" value="1">
+            <p class="text-xs text-amber-600 font-bold mt-1">⚠️ Você não pode alterar seu próprio nível de acesso.</p>
+            {% endif %}
         </div>
 
         <div class="pt-4 space-y-3">
