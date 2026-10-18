@@ -105,6 +105,8 @@ ilha-capri/
 | Edição/deleção de reserva: apenas **dono** ou **admin** | ✅ Implementado |
 | Múltiplas contas por unidade | ⚠️ Permitido por ora; futuro avaliar 1 conta por unidade |
 | Taxa/caução | ❌ Não há |
+| Deletar morador | ✅ Manual (Auth + profiles). Rota do painel admin será removida no futuro |
+| Alterar e-mail do morador | ⚠️ Manual (direto no Auth). Sincronização automática será avaliada no futuro |
 
 ---
 
@@ -154,7 +156,7 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 | #1 | Delete de reserva exigia apenas estar logado — corrigido para POST + validação de dono/admin |
 | #2 | Validações no backend (senhas, datas, horários) + refactor do cliente Supabase (isolamento por request) |
 | #3 | Regra dos 15 dias por unidade + rotas admin POST + proteção admin auto-rebaixar + WhatsApp vazio + logging |
-| #4 | Regra dos 15 dias só entre sábados + edição/deleção apenas pelo dono/admin + robustez de editar/deletar (IDs inválidos) |
+| #4 | Regra dos 15 dias só entre sábados + edição/deleção apenas pelo dono/admin + robustez com IDs inválidos |
 
 ### Bugs corrigidos (referência)
 
@@ -179,7 +181,12 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 - **Perfil duplicado em e-mail repetido**: se o Supabase Auth estiver sem
   "Confirm email", pode gerar `profiles` duplicados com mesmo e-mail
 - **Alterar e-mail só no profile**: a função de admin altera o e-mail em
-  `profiles`, mas não em `auth.users` — pode causar divergência
+  `profiles`, mas não em `auth.users` — pode causar divergência. O morador
+  continua logando com o e-mail **antigo** mesmo após a edição.
+  - **Solução temporária**: alterar o e-mail **direto no Supabase Auth**
+    (Authentication → Users → editar e-mail do usuário)
+  - **Solução definitiva (a implementar)**: sincronizar com `service_role`
+    ou remover o campo de e-mail da tela de edição
 
 ### 🟡 Média prioridade
 
@@ -262,11 +269,29 @@ Isso reverte instantaneamente.
 1. Vercel → **Deployments** → último deploy → **Functions** → **Logs**
 2. Como o código tem `app.logger.error`, os erros reais aparecem nos logs
 
-### Usuário preso no sistema
+### Deletar um morador definitivamente
 
-- **Deletar perfil**: Supabase → Table Editor → `profiles` → apagar linha
-- **Deletar usuário do Auth**: Supabase → Authentication → Users → apagar
-  ⚠️ Deletar do Auth sem deletar o profile deixa o perfil órfão
+Para remover um morador **completamente** do sistema (permitindo recadastro
+com o mesmo e-mail), é preciso apagar em **dois lugares**:
+
+1. **Supabase Auth**: Authentication → Users → buscar e-mail → "Delete user"
+   - Isso libera o e-mail para recadastro
+2. **Supabase Table Editor**: tabela `profiles` → apagar a linha
+   - Isso remove os dados do condomínio (nome, unidade, etc.)
+
+**Ordem recomendada**: Auth primeiro, depois profile.
+
+### Usuário preso no sistema (órfão)
+
+**Sintoma**: morador tenta se cadastrar e recebe erro "User already registered".
+
+**Causa**: o profile foi apagado, mas o usuário em `auth.users` ainda existe.
+
+**Solução**:
+1. Supabase → Authentication → Users
+2. Buscar pelo e-mail
+3. "Delete user"
+4. Morador pode se cadastrar novamente
 
 ### Reserva presa / conflito
 
