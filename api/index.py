@@ -61,7 +61,7 @@ def verificar_conflito(data, inicio, fim, reserva_id=None):
     return len(res.data) > 0
 
 # --- FUNÇÃO AUXILIAR: VALIDAÇÃO DA REGRA DE 15 DIAS ---
-def validar_regra_15_dias(unit_number, data_escolhida_str, reserva_id_atual=None):
+def validar_sabado_15_dias(unit_number, data_escolhida_str, reserva_id_atual=None):
     data_nova = datetime.strptime(data_escolhida_str, '%Y-%m-%d').date()
 
     db = get_supabase()
@@ -72,6 +72,11 @@ def validar_regra_15_dias(unit_number, data_escolhida_str, reserva_id_atual=None
             continue
 
         data_existente = datetime.strptime(r['reservation_date'], '%Y-%m-%d').date()
+
+        # Só considera reservas que caem em sábado
+        if data_existente.weekday() != 5:
+            continue
+
         diferenca = abs((data_nova - data_existente).days)
 
         if diferenca < 15:
@@ -158,12 +163,14 @@ def reservar():
         inicio_str = request.form.get('inicio')
         fim_str = request.form.get('fim')
 
-        # REGRA DE 15 DIAS (Admins estão isentos)
+        # REGRA DE 15 DIAS ENTRE SÁBADOS (Admins estão isentos)
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data)
-            if not passou_regra:
-                flash(f"⚠️ Regimento: Sua unidade já possui uma reserva em {data_conflito}. O intervalo mínimo entre agendamentos é de 15 dias.")
-                return redirect(url_for('reservar'))
+            dt_nova = datetime.strptime(data, '%Y-%m-%d')
+            if dt_nova.weekday() == 5:  # 5 = sábado
+                passou_regra, data_conflito = validar_sabado_15_dias(user['unit_number'], data)
+                if not passou_regra:
+                    flash(f"⚠️ Regimento: Sua unidade já tem reserva no sábado {data_conflito}. O intervalo mínimo entre sábados é de 15 dias.")
+                    return redirect(url_for('reservar'))
 
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
         form_fim = datetime.strptime(fim_str, '%H:%M').time()
@@ -204,11 +211,18 @@ def reservar():
 def editar(id):
     user = get_logged_user()
     db = get_supabase()
-    res_data = db.table('reservations').select('*').eq('id', id).maybe_single().execute().data
 
-    if not user or not res_data: return redirect(url_for('index'))
+    try:
+        res_data_obj = db.table('reservations').select('*').eq('id', id).maybe_single().execute()
+    except Exception:
+        res_data_obj = None
 
-    if not (user['is_admin'] or str(user['unit_number']) == str(res_data['unit_number'])):
+    if not user or not res_data_obj or not res_data_obj.data:
+        return redirect(url_for('index'))
+
+    res_data = res_data_obj.data
+
+    if not (user['is_admin'] or str(user['id']) == str(res_data['user_id'])):
         flash("⚠️ Sem permissão para editar.")
         return redirect(url_for('index'))
 
@@ -221,12 +235,14 @@ def editar(id):
         inicio_str = request.form.get('inicio')
         fim_str = request.form.get('fim')
 
-        # REGRA DE 15 DIAS NA EDIÇÃO
+        # REGRA DE 15 DIAS ENTRE SÁBADOS NA EDIÇÃO
         if not user['is_admin']:
-            passou_regra, data_conflito = validar_regra_15_dias(user['unit_number'], data, id)
-            if not passou_regra:
-                flash(f"⚠️ Intervalo insuficiente: você possui outra reserva em {data_conflito}. O mínimo é 15 dias entre usos.")
-                return redirect(url_for('editar', id=id))
+            dt_nova = datetime.strptime(data, '%Y-%m-%d')
+            if dt_nova.weekday() == 5:  # 5 = sábado
+                passou_regra, data_conflito = validar_sabado_15_dias(user['unit_number'], data, id)
+                if not passou_regra:
+                    flash(f"⚠️ Regimento: Sua unidade já tem reserva no sábado {data_conflito}. O intervalo mínimo entre sábados é de 15 dias.")
+                    return redirect(url_for('editar', id=id))
 
         form_inicio = datetime.strptime(inicio_str, '%H:%M').time()
         form_fim = datetime.strptime(fim_str, '%H:%M').time()
@@ -268,14 +284,19 @@ def delete(id):
         return redirect(url_for('login'))
 
     db = get_supabase()
-    res = db.table('reservations').select('id, unit_number')\
-        .eq('id', id).maybe_single().execute().data
+    try:
+        res = db.table('reservations').select('id, unit_number, user_id')\
+            .eq('id', id).maybe_single().execute()
+    except Exception:
+        res = None
 
-    if not res:
+    if not res or not res.data:
         flash("⚠️ Reserva não encontrada.")
         return redirect(url_for('index'))
 
-    if not (user['is_admin'] or str(user['unit_number']) == str(res['unit_number'])):
+    res = res.data
+
+    if not (user['is_admin'] or str(user['id']) == str(res['user_id'])):
         flash("⚠️ Você não tem permissão para excluir esta reserva.")
         return redirect(url_for('index'))
 

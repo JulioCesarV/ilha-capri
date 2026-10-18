@@ -64,7 +64,7 @@ ilha-capri/
 - **Horário permitido**: 08:00 às 22:00
 - **Dias permitidos**: segunda a sábado (domingos bloqueados para limpeza)
 - **Conflito de horário**: sistema impede duas reservas no mesmo intervalo
-- **Regra dos 15 dias**: uma reserva por **unidade** a cada 15 dias
+- **Regra dos 15 dias (sábados)**: cada unidade pode reservar apenas **um sábado** a cada 15 dias. Reservas em dias de semana não têm essa restrição. (A regra é por unidade, não por conta — evita burla com múltiplas contas.)
   (a regra é por unidade, não por conta — evita burla com múltiplas contas)
 - **Cancelamento/edição**: morador pode editar/excluir suas próprias reservas
 - **Bloqueio**: moradores inadimplentes (marcados como `is_blocked`) não
@@ -98,10 +98,11 @@ ilha-capri/
 
 | Decisão | Status |
 |---------|--------|
-| Regra dos 15 dias por **unidade** (não por conta) | ✅ Implementado |
+| Regra dos 15 dias **entre sábados** (por unidade) | ✅ Implementado |
 | Bloquear vs deletar morador | ✅ **Só bloquear**. Deleção é feita direto no Supabase |
 | Domingos bloqueados | ✅ Implementado |
 | Horário 08h-22h | ✅ Implementado |
+| Edição/deleção de reserva: apenas **dono** ou **admin** | ✅ Implementado |
 | Múltiplas contas por unidade | ⚠️ Permitido por ora; futuro avaliar 1 conta por unidade |
 | Taxa/caução | ❌ Não há |
 
@@ -153,6 +154,7 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 | #1 | Delete de reserva exigia apenas estar logado — corrigido para POST + validação de dono/admin |
 | #2 | Validações no backend (senhas, datas, horários) + refactor do cliente Supabase (isolamento por request) |
 | #3 | Regra dos 15 dias por unidade + rotas admin POST + proteção admin auto-rebaixar + WhatsApp vazio + logging |
+| #4 | Regra dos 15 dias só entre sábados + edição/deleção apenas pelo dono/admin + robustez de editar/deletar (IDs inválidos) |
 
 ### Bugs corrigidos (referência)
 

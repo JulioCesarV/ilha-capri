@@ -38,7 +38,7 @@ Este é um sistema web minimalista e funcional desenvolvido para a gestão de re
 1. **Horário de Funcionamento:** Reservas permitidas apenas das 08:00 às 22:00.
 2. **Dias Permitidos:** De segunda a sábado. Domingos são bloqueados para manutenção/limpeza.
 3. **Conflito de Horário:** O sistema impede automaticamente duas reservas no mesmo intervalo de tempo.
-4. **Regra dos 15 dias:** Cada unidade pode ter apenas uma reserva a cada 15 dias. Vale para todas as contas da mesma unidade.
+4. **Regra dos 15 dias (sábados):** Cada unidade pode ter apenas um sábado reservado a cada 15 dias. Reservas em dias de semana não têm essa restrição.
 5. **Segurança (RLS):** Tabelas protegidas por *Row Level Security* no banco de dados, garantindo que um morador não altere dados de outro.
 6. **Privacidade:** O Dashboard oculta reservas que já passaram, mantendo a tela inicial sempre limpa e atualizada.
 
