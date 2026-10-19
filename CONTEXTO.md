@@ -157,6 +157,7 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 | #2 | Validações no backend (senhas, datas, horários) + refactor do cliente Supabase (isolamento por request) |
 | #3 | Regra dos 15 dias por unidade + rotas admin POST + proteção admin auto-rebaixar + WhatsApp vazio + logging |
 | #4 | Regra dos 15 dias só entre sábados + edição/deleção apenas pelo dono/admin + robustez com IDs inválidos |
+| #5 | Atualização do rodapé (footer) com contato de suporte para problemas de acesso e ajustes de legibilidade |
 
 ### Bugs corrigidos (referência)
 
